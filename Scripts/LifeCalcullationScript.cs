@@ -6,6 +6,7 @@ using System;
 public class LifeCalcullationScript : MonoBehaviour
 {
     public static int lifeRemained;
+    
     public TMP_Text lifeRemainedText;
     public TMP_Text timerText;
 

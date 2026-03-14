@@ -12,7 +12,7 @@ public class HardModeExplainButtonScript : MonoBehaviour
 
     public GameObject hardModeExplainPanel;
     public TMP_Text totalPointsText;
-    public TMP_Text currentStreakText;
+   // public TMP_Text currentStreakText;
     // private int currentStreak;
 
     private void Start()
@@ -20,7 +20,7 @@ public class HardModeExplainButtonScript : MonoBehaviour
         int totalPoints = PlayerPrefs.GetInt("Total Points",0);
         int currentStreak = PlayerPrefs.GetInt("CurrentStreak", 0); 
         totalPointsText.text = "Toplam Puaným: " + totalPoints;
-        currentStreakText.text = "Mevcut Serim: " + currentStreak;
+       // currentStreakText.text = "Mevcut Serim: " + currentStreak;
     }
     public void QuestionMarkButton()
     {

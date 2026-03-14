@@ -13,6 +13,8 @@ public class GameScript_DailyWord : MonoBehaviour, IGameManager
     public class LetterGroup { public string Harf; public string[] Kelimeler; }
     [System.Serializable]
     public class LetterGroupList { public LetterGroup[] groups; }
+    private bool[][] hintLetters; // Her satır için hangi hücre ipucu ile açıldı
+
     #endregion
 
     #region References
@@ -21,22 +23,28 @@ public class GameScript_DailyWord : MonoBehaviour, IGameManager
     public TileFlipEffectScript flipEffect;
     private StreakCalculation streakScript;
     private KeyboardManager keyboardManager;
-    private ButtonManager buttonManager;
+    // private ButtonManager buttonManager;
+    private DiamondCalculation diamondCalculation;
+    private HintManager hintManager;
 
     [Header("JSON Files")]
     [SerializeField] private TextAsset answersFile;
     [SerializeField] private TextAsset validWordsFile;
+    List<string> usedWords = new List<string>();
+
 
     [Header("UI Grid Settings")]
     [SerializeField] private Transform gridParent;
     private TMP_Text[][] allRows;
     public TMP_Text gameOverWordText, congratsWordText;
-    public GameObject gameOverScreen, congractsScreen;
-    public Button giveUpButton;
+    public GameObject gameOverScreen, congractsScreen, sparkelEffectCanvas;
+    public Button eliminateButton,revealButton;
     #endregion
 
     #region Game State
     private bool gameEnded = false;
+    public bool GameEnded => gameEnded;
+
     private bool isProcessing = false;
     private int currentRow = 0;
     private int currentIndex = 0;
@@ -47,8 +55,8 @@ public class GameScript_DailyWord : MonoBehaviour, IGameManager
     private const int totalGuessLimit = 6;
     private const int baseMultiplier = 30;
 
-    private string correctWord;
-    private string currentGuess = "";
+    private static string correctWord;
+    public string currentGuess = "";
     private HashSet<string> validGuesses;
     private LetterGroupList wordData;
     public static List<char> grayLetters = new List<char>();
@@ -69,17 +77,32 @@ public class GameScript_DailyWord : MonoBehaviour, IGameManager
 
     #region Unity Lifecycle
 
-    void Start()
+    private void Awake()
     {
+        sparkelEffectCanvas = GameObject.FindWithTag("Effects Canvas");
+
+        if (sparkelEffectCanvas == null) Debug.Log("canvas atanmadı");
+
+        if (sparkelEffectCanvas != null) sparkelEffectCanvas.SetActive(false);
+
+        ButtonManager.giveUp = false;
         SetupGrid();
-        //var allStrikes = Resources.FindObjectsOfTypeAll<StreakCalculation>();
-        //Debug.Log("Sahnede toplam bulunan script sayısı: " + allStrikes.Length);
+        
         streakScript = Object.FindAnyObjectByType<StreakCalculation>();
         keyboardManager = Object.FindAnyObjectByType<KeyboardManager>();
-        lifeCalcullationScript = Object.FindAnyObjectByType<LifeCalcullationScript>();
-        // Start içinde kullanımı:
-        
+        lifeCalcullationScript = Object.FindAnyObjectByType<LifeCalcullationScript>();        
+        diamondCalculation = Object.FindAnyObjectByType<DiamondCalculation>();
+        hintManager = Object.FindAnyObjectByType<HintManager>();
 
+        eliminateButton.onClick.AddListener(() =>
+        {
+            hintManager.Eliminate3Letters(correctWord);
+        });
+
+        revealButton.onClick.AddListener(() =>
+        {
+            RevealRandomLetter(correctWord.Length, correctWord, allRows, currentRow);
+        });
 
         if (streakScript == null)
         {
@@ -87,13 +110,25 @@ public class GameScript_DailyWord : MonoBehaviour, IGameManager
 
         }
 
+        //LoadData();
+        //InitializeDailyGame();
+        //LoadRevealedLetters(wordLength, correctWord, allRows, currentRow);
+    }
+
+    void Start()
+    {
         LoadData();
         InitializeDailyGame();
+        LoadRevealedLetters(wordLength, correctWord, allRows, currentRow);
     }
 
     void Update()
     {
-        if (gameEnded || isProcessing) return;
+        if (gameEnded || isProcessing)
+        {
+
+            return;
+        }
 
         if (ButtonManager.giveUp)
         {
@@ -145,17 +180,31 @@ public class GameScript_DailyWord : MonoBehaviour, IGameManager
         System.Random rng = new System.Random((int)(seed % int.MaxValue));
 
         int total = wordData.groups.Sum(g => g.Kelimeler.Length);
-        int index = rng.Next(total);
+
+        int index = Random.Range(0, total);
 
         foreach (var group in wordData.groups)
         {
             if (index < group.Kelimeler.Length)
             {
-                correctWord = group.Kelimeler[index].ToUpper(tr);
+                string word = group.Kelimeler[index].ToUpper(tr);
+
+                // Eğer kelime daha önce kullanıldıysa tekrar seç
+                if (usedWords.Contains(word) && usedWords.Count < total)
+                {
+                    SelectDailyWord();
+                    return;
+                }
+
+                correctWord = word;
+                usedWords.Add(word);
                 return;
             }
+
             index -= group.Kelimeler.Length;
         }
+
+
     }
     #endregion
 
@@ -175,29 +224,175 @@ public class GameScript_DailyWord : MonoBehaviour, IGameManager
     {
         if (gameEnded || isProcessing || currentIndex >= wordLength) return;
 
+        // ÖNEMLİ: Eğer mevcut hücre ipucu ile dolmuşsa, bir sonraki boş hücreye atla
+        while (currentIndex < wordLength && hintLetters[currentRow][currentIndex])
+        {
+            currentIndex++;
+        }
+
+        // Eğer atlamalar sonucu satır sonuna geldiysek yazma
+        if (currentIndex >= wordLength) return;
+
         char upperChar = char.ToUpper(letter[0], tr);
+
+        // Hard Mode Kontrolü
         if (grayLetters.Contains(upperChar) && SceneLoader.HardMode)
         {
-            keyboardManager.ShowMessage();
+            keyboardManager.ShowMessageHardMode();
             return;
-            // keyboardManager.floatingTextPrefab
         }
-        currentGuess += upperChar;
 
+        currentGuess = UpdateGuessString(currentIndex, upperChar); // String'i güncelle
         allRows[currentRow][currentIndex].text = upperChar.ToString();
-        currentIndex++;
 
+        // Bir sonraki harfe geçmeden önce tekrar ipucu kontrolü
+        currentIndex++;
+        while (currentIndex < wordLength && hintLetters[currentRow][currentIndex])
+        {
+            currentIndex++;
+        }
     }
 
     public void DeleteLetter()
     {
         if (gameEnded || isProcessing || currentIndex <= 0) return;
 
-        currentIndex--;
-        currentGuess = currentGuess.Substring(0, currentGuess.Length - 1);
-        allRows[currentRow][currentIndex].text = "";
+        // Mevcut indeksi bir geri al, ama eğer ipucu harfiyse daha da geri git
+        int targetIndex = currentIndex - 1;
+        while (targetIndex >= 0 && hintLetters[currentRow][targetIndex])
+        {
+            targetIndex--;
+        }
+
+        if (targetIndex < 0) return; // Silinecek harf kalmadı (hepsi ipucu)
+
+        allRows[currentRow][targetIndex].text = "";
+        currentIndex = targetIndex; // İndeksi silinen yere çek
+
+        currentGuess = currentGuess.Remove(targetIndex, 1).Insert(targetIndex, " ");
     }
 
+    private string UpdateGuessString(int index, char letter)
+    {
+        char[] chars = currentGuess.PadRight(wordLength).ToCharArray();
+        chars[index] = letter;
+        return new string(chars).Replace("\0", " ");
+    }
+
+    #region Reveal / IPUCU
+    private const string REVEAL_KEY = "Daily_RevealedIndexes";
+
+    public void RevealRandomLetter(int wordLength, string correctWord, TMP_Text[][] allRows, int currentRow)
+    {
+        diamondCalculation.SpendDiamond(5);
+
+        if (DiamondCalculation.notEnougDiamond)
+        {
+            hintManager.ShowMessageDiamond();
+            return;
+        }
+
+
+        List<int> availableIndexes = new List<int>();
+
+        for (int i = 0; i < wordLength; i++)
+        {
+            // Eğer hücre boşsa veya yanlış harf varsa seçilebilir
+            if (allRows[currentRow][i].text != correctWord[i].ToString())
+                availableIndexes.Add(i);
+        }
+
+        if (availableIndexes.Count == 0) return;
+
+        int randomIndex = availableIndexes[UnityEngine.Random.Range(0, availableIndexes.Count)];
+
+        // Harfi uygula
+        ApplyHintLetter(randomIndex, correctWord, allRows, currentRow);
+
+        // İndeksi kaydet
+        SaveRevealedIndex(randomIndex);
+
+        // Otomatik kazanma kontrolü
+        CheckAutoWin(wordLength, correctWord, allRows, currentRow);
+    }
+
+    // Harfi hem görsel hem mantıksal olarak işleyen yardımcı fonksiyon
+    private void ApplyHintLetter(int index, string correctWord, TMP_Text[][] allRows, int currentRow)
+    {
+        char hintLetter = correctWord[index];
+        allRows[currentRow][index].text = hintLetter.ToString();
+
+        // Senin sistemindeki kilit mekanizması
+        if (hintLetters != null)
+            hintLetters[currentRow][index] = true;
+
+        Image tileImage = allRows[currentRow][index].GetComponentInParent<Image>();
+        if (tileImage != null) tileImage.color = Color.green;
+
+        keyboardManager.MarkLetterAsGreen(hintLetter);
+    }
+
+    #region Kayıt ve Yükleme
+
+    private void SaveRevealedIndex(int index)
+    {
+        string currentData = PlayerPrefs.GetString(REVEAL_KEY, "");
+        if (string.IsNullOrEmpty(currentData))
+        {
+            currentData = index.ToString();
+        }
+        else
+        {
+            currentData += "," + index; // İndeksleri virgülle ayırarak tut (Örn: "0,2,4")
+        }
+        PlayerPrefs.SetString(REVEAL_KEY, currentData);
+        PlayerPrefs.Save();
+    }
+
+    // LoadEliminatedLetters içinde veya Start'ta çağrılmalı
+    public void LoadRevealedLetters(int wordLength, string correctWord, TMP_Text[][] allRows, int currentRow)
+    {
+        string savedData = PlayerPrefs.GetString(REVEAL_KEY, "");
+        if (string.IsNullOrEmpty(savedData)) return;
+
+        string[] indexes = savedData.Split(',');
+        foreach (string idxStr in indexes)
+        {
+            if (int.TryParse(idxStr, out int idx))
+            {
+                if (idx < wordLength)
+                {
+                    ApplyHintLetter(idx, correctWord, allRows, currentRow);
+                }
+            }
+        }
+
+        // Yükleme sonrası kazanma kontrolü
+        CheckAutoWin(wordLength, correctWord, allRows, currentRow);
+    }
+
+    private void CheckAutoWin(int wordLength, string correctWord, TMP_Text[][] allRows, int currentRow)
+    {
+        bool allRevealed = true;
+        for (int i = 0; i < wordLength; i++)
+        {
+            if (allRows[currentRow][i].text != correctWord[i].ToString())
+            {
+                allRevealed = false;
+                break;
+            }
+        }
+
+        if (allRevealed)
+        {
+            // HandleWin metodun nerede tanımlıysa oraya referans verilmeli
+            // Eğer bu script içindeyse direkt çağır:
+            HandleWin();
+        }
+    }
+
+    #endregion
+    #endregion
     public void SubmitGuess()
     {
         if (gameEnded || isProcessing || currentGuess.Length != wordLength) return;
@@ -225,10 +420,14 @@ public class GameScript_DailyWord : MonoBehaviour, IGameManager
 
         if (guess == correctWord)
         {
+            yield return new WaitForSeconds(1.5f);
+
             HandleWin();
         }
         else if (numGuess >= totalGuessLimit)
         {
+            yield return new WaitForSeconds(1.5f);
+
             HandleLoss();
         }
         else
@@ -293,6 +492,7 @@ public class GameScript_DailyWord : MonoBehaviour, IGameManager
     {
         gameEnded = true;
         win = true;
+        if (sparkelEffectCanvas != null) sparkelEffectCanvas.SetActive(true);
         PlayerPrefs.SetInt(PlayedKey, 1);
         PlayerPrefs.SetInt(WinKey, 1);
 
@@ -304,7 +504,18 @@ public class GameScript_DailyWord : MonoBehaviour, IGameManager
         streakScript.UpdateStreak();
 
         PlayerPrefs.Save();
+        if (GlobalGameManager.Instance == null) Debug.Log("Instance Null");
         GlobalGameManager.Instance.ReportWin(this.wordLength);
+        var stats = StatsService.Data;
+        stats.totalWins++;
+        if (numGuess > 0 && numGuess <= stats.guessDistribution.Length)
+        {
+            stats.guessDistribution[numGuess - 1]++;
+        }
+
+        StatsService.Save();
+
+        Debug.Log("İstatistikler kaydedildi! Toplam galibiyet: " + stats.totalWins);
         ShowDailyResult();
     }
 
@@ -326,6 +537,7 @@ public class GameScript_DailyWord : MonoBehaviour, IGameManager
         {
             congratsWordText.text = correctWord;
             congractsScreen.SetActive(true);
+            if (sparkelEffectCanvas != null) sparkelEffectCanvas.SetActive(true);
         }
         else
         {
@@ -417,9 +629,32 @@ public class GameScript_DailyWord : MonoBehaviour, IGameManager
 
     public void ClearRow()
     {
-        for (int i = 0; i < wordLength; i++) allRows[currentRow][i].text = "";
+        char[] newGuess = new char[wordLength];
+
+        for (int i = 0; i < wordLength; i++)
+        {
+            if (hintLetters[currentRow][i])
+            {
+                // Hint harfleri currentGuess içinde de tut
+                newGuess[i] = allRows[currentRow][i].text[0];
+            }
+            else
+            {
+                // Boş hücreleri temizle
+                allRows[currentRow][i].text = "";
+                newGuess[i] = ' '; // boşluk olarak bırak
+            }
+        }
+
+        // Güncellenmiş currentGuess
+        currentGuess = new string(newGuess);
+
+        // İndeksi ilk boş hücreye ayarla
         currentIndex = 0;
-        currentGuess = "";
+        while (currentIndex < wordLength && hintLetters[currentRow][currentIndex])
+        {
+            currentIndex++;
+        }
     }
     #endregion
 
@@ -428,12 +663,16 @@ public class GameScript_DailyWord : MonoBehaviour, IGameManager
     {
         int rowCount = gridParent.childCount;
         allRows = new TMP_Text[rowCount][];
+        hintLetters = new bool[rowCount][];   // EKLE
 
         for (int i = 0; i < rowCount; i++)
         {
             Transform rowTransform = gridParent.GetChild(i);
-            // Sadece doğrudan çocukları alarak daha güvenli hale getiriyoruz
+
             allRows[i] = rowTransform.GetComponentsInChildren<TMP_Text>();
+
+            // Her satır için hint dizisi oluştur
+            hintLetters[i] = new bool[allRows[i].Length];
         }
     }
     #endregion

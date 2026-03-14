@@ -7,12 +7,16 @@ public class SceneLoader : MonoBehaviour
 {
     public static string clickedButton1Tag;
     public static string clickedButton2Tag;
-    public LifeCalcullationScript lifeCalculationScript;
+    private LifeCalcullationScript lifeCalculationScript;
     public MainSceneButtonManager mainSceneButtonManager;
+    public GameObject storePanel;
+    public GameObject gameOverScene;
+
+
 
     private int totalPoints;
-    private const int minUnlimitedPoint = 500;
-    private const int minTimeLimitPoint = 1000;
+    public static int minUnlimitedPoint = 500;
+    public static int minTimeLimitPoint = 1000;
     private int isUnlockedUnlimted;
     private int isUnlockedTimelimit;
 
@@ -159,6 +163,16 @@ public class SceneLoader : MonoBehaviour
 
     public void RestartScene()
     {
+        if(PlayerPrefs.GetInt("lifeRemained") <= 0)
+        {
+            Debug.Log("Not Enough Life");
+            if (storePanel != null)
+            {
+                storePanel.SetActive(true);
+                gameOverScene.SetActive(false);
+            }
+            return;
+        }
         Scene activeScene = SceneManager.GetActiveScene();
         SceneManager.LoadScene(activeScene.name);
     }

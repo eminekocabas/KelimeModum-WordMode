@@ -1,4 +1,3 @@
-
 using UnityEngine;
 using UnityEngine.SceneManagement;
 using UnityEngine.UI;
@@ -7,9 +6,12 @@ public class ButtonManager : MonoBehaviour
 {
     public GameObject gameOverScene;
     public GameObject congratsScene;
-    public Button seeMyPointsButton;
-    public Button giveUpButton;
+
+    private Button seeMyPointsButton;
+    private Button giveUpButton;
+    public GameObject hintPanel, storePanel;
     public static bool giveUp = false;
+    bool hintPanelOpen = false;
 
     public MonoBehaviour gameScript;
     private IGameManager gameResult;
@@ -26,14 +28,18 @@ public class ButtonManager : MonoBehaviour
             {
                 giveUpButton = btn;
                 giveUpButton.gameObject.SetActive(SceneLoader.HardMode);
+                giveUpButton.interactable = SceneLoader.HardMode;
                 giveUpButton.onClick.AddListener(GiveUp);
-                Debug.Log("buton bulundu");
+
+                if (gameResult.GameEnded)
+                {
+                    giveUpButton.gameObject.SetActive(false);
+                }
             }
             else if (btn.name == "See My Points Button")
             {
                 seeMyPointsButton = btn;
                 seeMyPointsButton.onClick.AddListener(SeeMyPointsButton);
-                Debug.Log("buton bulundu");
             }
         }
 
@@ -54,12 +60,15 @@ public class ButtonManager : MonoBehaviour
     { 
         congratsScene.SetActive(false);
         seeMyPointsButton.gameObject.SetActive(true);
+        giveUpButton.gameObject.SetActive(false);
+
     }
 
     public void SeeStatsGameOverButton()
     {
         gameOverScene.SetActive(false);
         seeMyPointsButton.gameObject.SetActive(true);
+        giveUpButton.gameObject.SetActive(false);
     }
 
 
@@ -87,6 +96,22 @@ public class ButtonManager : MonoBehaviour
         congratsScene.SetActive(false);
     }
 
+    public void ChangeHintPanel()
+    {
+        if (gameResult.GameEnded)
+        {
+            giveUpButton.interactable = false;
+            return;
+        }
+        hintPanelOpen = !hintPanelOpen; 
+        hintPanel.SetActive(hintPanelOpen);
+    }
 
+    public void CloseStorePanel()
+    {
+       // gameOverScene.SetActive(true);
+        storePanel.SetActive(false);
+
+    }
 
 }

@@ -7,7 +7,7 @@ public class ToggleManager : MonoBehaviour
 
     [Header("Hard Mode Toggle")]
     public Toggle hardModeToggle;
-    public RawImage x2Image;
+    public GameObject x2Image;
 
     [Header("Switch Visuals")]
     public RectTransform handle;

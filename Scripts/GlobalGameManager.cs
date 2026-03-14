@@ -34,6 +34,8 @@ public class GlobalGameManager : MonoBehaviour
 
         PlayerPrefs.Save();
         Debug.Log($"Galibiyet Raporlandý: {wordLength} harfli mod.");
+
+
     }
 
     // Bir mod kaybedildiðinde (tüm haklar bittiðinde) çaðrýlýr

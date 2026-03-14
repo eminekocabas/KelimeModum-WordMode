@@ -6,6 +6,7 @@ public class MainSceneButtonManager : MonoBehaviour
     public Button enoughLifeButton;
     public GameObject unlimitedLocked;
     public GameObject timelimitLocked;
+   // public GameObject statsPanel;
 
 
     public void EnoughLife()
@@ -41,5 +42,4 @@ public class MainSceneButtonManager : MonoBehaviour
     {
         timelimitLocked.SetActive(false);
     }
-
 }

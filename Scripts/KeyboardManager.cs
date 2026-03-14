@@ -21,8 +21,10 @@ public class KeyboardManager : MonoBehaviour
     public IGameManager gameScript;
 
     [Header("Uyarý Mesajý Ayarlarý")]
-    [SerializeField] private CanvasGroup warningCanvasGroup; // Inspector'a bunu sürükleyeceksin
+    [SerializeField] private CanvasGroup warningCanvasGroup;
     private Coroutine currentRoutine;
+    // Harflerin o anki "en yüksek öncelikli" rengini tutar
+    private Dictionary<string, Color> letterColors = new Dictionary<string, Color>();
 
     void Awake()
     {
@@ -32,6 +34,8 @@ public class KeyboardManager : MonoBehaviour
             warningCanvasGroup.gameObject.SetActive(true);
             warningCanvasGroup.alpha = 0;
         }
+
+        
 
         // gameScript hala null ise sahnede ara
         if (gameScript == null)
@@ -55,11 +59,17 @@ public class KeyboardManager : MonoBehaviour
                 "GameManager script'inin baþýna 'public class GameManager : MonoBehaviour, IGameManager' yazdýðýndan emin ol.");
         }
 
+        
+    }
+
+    void Start()
+    {
         SetupKeyboard();
+
     }
 
     // Mesajý tetiklemek için bu metodu kullan
-    public void ShowMessage()
+    public void ShowMessageHardMode()
     {
         if (warningCanvasGroup == null)
         {
@@ -69,10 +79,10 @@ public class KeyboardManager : MonoBehaviour
             
 
         if (currentRoutine != null) StopCoroutine(currentRoutine);
-        currentRoutine = StartCoroutine(FadeSequence());
+        currentRoutine = StartCoroutine(FadeSequence(warningCanvasGroup));
     }
 
-    IEnumerator FadeSequence()
+    IEnumerator FadeSequence(CanvasGroup canvasGroup)
     {
         float timer = 0;
 
@@ -80,10 +90,10 @@ public class KeyboardManager : MonoBehaviour
         while (timer < fadeInDuration)
         {
             timer += Time.deltaTime;
-            warningCanvasGroup.alpha = Mathf.Lerp(0, 1, timer / fadeInDuration);
+            canvasGroup.alpha = Mathf.Lerp(0, 1, timer / fadeInDuration);
             yield return null;
         }
-        warningCanvasGroup.alpha = 1; // Tam görünürlük garantisi
+        canvasGroup.alpha = 1; // Tam görünürlük garantisi
 
         // 2. Bekleme
         yield return new WaitForSeconds(waitDuration);
@@ -93,38 +103,22 @@ public class KeyboardManager : MonoBehaviour
         while (timer < fadeOutDuration)
         {
             timer += Time.deltaTime;
-            warningCanvasGroup.alpha = Mathf.Lerp(1, 0, timer / fadeOutDuration);
+            canvasGroup.alpha = Mathf.Lerp(1, 0, timer / fadeOutDuration);
             yield return null;
         }
-        warningCanvasGroup.alpha = 0; // Tam gizlilik garantisi
+        canvasGroup.alpha = 0; // Tam gizlilik garantisi
 
         currentRoutine = null; // Ýþlem bittiðinde temizle
     }
 
-    public void MarkLetterAsGray(char letter)
-    {
-        string l = letter.ToString().ToUpper();
-
-        if (keyboardButtons.ContainsKey(l))
-        {
-            keyboardButtons[l].color = darkGray;
-            // Eðer butona týklanmasýný da engellemek istersen:
-            if (SceneLoader.HardMode)
-            {
-               // keyboardButtons[l].GetComponent<Button>().interactable = false;
-            }
-            // keyboardButtons[l].GetComponent<Button>().interactable = false;
-        }
-    }
 
     public void MarkLetterAsGreen(char letter)
     {
         string l = letter.ToString().ToUpper();
-
         if (keyboardButtons.ContainsKey(l))
         {
             keyboardButtons[l].color = green;
-            // keyboardButtons[l].GetComponent<Button>().interactable = false;
+            letterColors[l] = green; // Durumu güncelle
         }
     }
 
@@ -132,13 +126,31 @@ public class KeyboardManager : MonoBehaviour
     {
         string l = letter.ToString().ToUpper();
 
+        // EÐER ZATEN YEÞÝLSE, SARIYA ÇEVÝRME
+        if (letterColors.ContainsKey(l) && letterColors[l] == green)
+            return;
+
         if (keyboardButtons.ContainsKey(l))
         {
             keyboardButtons[l].color = yellow;
-            // Eðer butona týklanmasýný da engellemek istersen:
-            // keyboardButtons[l].GetComponent<Button>().interactable = false;
+            letterColors[l] = yellow;
         }
-    }  
+    }
+
+    public void MarkLetterAsGray(char letter)
+    {
+        string l = letter.ToString().ToUpper();
+
+        // EÐER ZATEN YEÞÝL VEYA SARIYSA, GRÝYE ÇEVÝRME
+        if (letterColors.ContainsKey(l) && (letterColors[l] == green || letterColors[l] == yellow))
+            return;
+
+        if (keyboardButtons.ContainsKey(l))
+        {
+            keyboardButtons[l].color = darkGray;
+            letterColors[l] = darkGray;
+        }
+    }
 
     void SetupKeyboard()
     {
@@ -146,6 +158,15 @@ public class KeyboardManager : MonoBehaviour
 
         foreach (Button btn in allButtons)
         {
+            if (gameScript.GameEnded)
+            {
+                btn.interactable = false;
+            }
+            else
+            {
+                btn.interactable = true;
+
+            }
             // Buton ismini al ve büyük harfe çevir (Örn: "Backspace", "Enter", "A")
             string btnName = btn.gameObject.name.ToUpper();
 
